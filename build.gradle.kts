@@ -12,16 +12,6 @@ version = "0.0.1"
 
 repositories {
     mavenCentral()
-    maven("https://maven.tryformation.com/releases") {
-        content {
-            includeGroup("com.jillesvangurp")
-        }
-    }
-    mavenLocal {
-        content {
-            includeGroup("org.cikit")
-        }
-    }
 }
 
 kotlin {
@@ -73,6 +63,36 @@ kotlin {
         commonTest {
             dependencies {
                 implementation(kotlin("test"))
+            }
+        }
+    }
+}
+
+publishing {
+    publications {
+        withType(MavenPublication::class.java).configureEach {
+            pom {
+                name = "json-stream"
+                description = "A streaming JSON parser for Kotlin Multiplatform"
+                url = "https://github.com/b8b/json-stream"
+                licenses {
+                    license {
+                        name = "The Apache License, Version 2.0"
+                        url = "http://www.apache.org/licenses/LICENSE-2.0.txt"
+                    }
+                }
+                developers {
+                    developer {
+                        id = "b8b@cikit.org"
+                        name = "b8b@cikit.org"
+                        email = "b8b@cikit.org"
+                    }
+                }
+                scm {
+                    connection = "scm:git:https://github.com/b8b/json-stream.git"
+                    developerConnection = "scm:git:ssh://github.com/b8b/json-stream.git"
+                    url = "https://github.com/b8b/json-stream.git"
+                }
             }
         }
     }
