@@ -1,0 +1,10 @@
+**/build
+**/.gradle
+
+/*.iml
+/.idea
+/.kotlin
+
+/out
+/work
+/frontend/src/jsMain/resources/config.json
