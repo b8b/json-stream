@@ -8,14 +8,14 @@ plugins {
 }
 
 group = "org.cikit"
-version = "0.0.1"
+version = "0.0.2"
 
 repositories {
     mavenCentral()
 }
 
 kotlin {
-    jvmToolchain(25)
+    jvmToolchain(11)
 
     jvm {
         testRuns["test"].executionTask.configure {
