@@ -134,9 +134,9 @@ sequences).
 
 ## Dependencies
 
-- `kotlinx-serialization-json` 1.10.0
-- `kotlinx-coroutines-core` 1.10.2
-- `io.ktor:ktor-io` 3.4.0
+- `kotlinx-serialization-json`
+- `kotlinx-coroutines-core`
+- `io.ktor:ktor-io`
 
 ## Building
 

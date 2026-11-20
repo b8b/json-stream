@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "org.cikit"
-version = "0.0.2"
+version = "0.0.3"
 
 repositories {
     mavenCentral()
@@ -48,9 +48,9 @@ kotlin {
     }
 
     sourceSets {
-        val serializationVersion = "1.10.0"
-        val coroutinesVersion = "1.10.2"
-        val ktorVersion = "3.4.0"
+        val serializationVersion = "1.13.0"
+        val coroutinesVersion = "1.11.0"
+        val ktorVersion = "3.6.1"
 
         commonMain {
             dependencies {
