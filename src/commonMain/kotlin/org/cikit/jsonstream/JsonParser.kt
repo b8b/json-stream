@@ -288,7 +288,7 @@ class JsonParser {
                 popState()
                 return nextStr()
             }
-            pushState(State.ESCAPE_4)
+            setState(State.ESCAPE_4)
             require(!finished)
             return JsonEvent.InProgress
         }

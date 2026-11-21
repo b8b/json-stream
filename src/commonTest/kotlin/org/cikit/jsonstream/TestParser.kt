@@ -210,4 +210,66 @@ class TestParser {
         }
         assertEquals(4, events.size) // StartObject + key + value + EndObject
     }
+
+    private fun parseAllChunked(
+        input: String,
+        chunkSize: Int
+    ): List<Pair<JsonEvent, String?>> {
+        val data = input.encodeToByteArray()
+        val p = JsonParser()
+        val events = mutableListOf<Pair<JsonEvent, String?>>()
+        var offset = 0
+        while (offset < data.size) {
+            val end = minOf(offset + chunkSize, data.size)
+            p.push(data, offset, end - offset)
+            offset = end
+            while (true) {
+                val next = p.next()
+                    ?: error("unexpected end of input before finish()")
+                if (next is JsonEvent.InProgress) break
+                events.add(next to p.currentValue())
+            }
+        }
+        p.finish()
+        while (true) {
+            val next = p.next() ?: break
+            require(next !is JsonEvent.InProgress) { "InProgress after finish" }
+            events.add(next to p.currentValue())
+        }
+        return events
+    }
+
+    private val incrementalDocuments = listOf(
+        "\"\\u0041\"",
+        "[\"\\u0041\"]",
+        "\"a\\u0041b\"",
+        "\"a\\u00e9\\u4e16b\"",
+        "{\"k\":\"\\u0041\",\"n\":[true,null,1]}",
+        "[1,\"x\\u0041y\",{\"a\":[]}]",
+    )
+
+    @Test
+    fun testUnicodeEscapeSplitAcrossPushes() {
+        for (doc in incrementalDocuments) {
+            val expected = parseAll(doc)
+            val size = doc.encodeToByteArray().size
+            for (chunkSize in 1..size) {
+                assertEquals(
+                    expected,
+                    parseAllChunked(doc, chunkSize),
+                    "doc=$doc chunkSize=$chunkSize",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testUnicodeEscapeValueText() {
+        val events = parseAllChunked("[\"\\u0041\"]", 1)
+        assertEquals(JsonEvent.StartArray, events[0].first)
+        assertEquals(JsonEvent.Value, events[1].first)
+        assertEquals("\"\\u0041\"", events[1].second)
+        assertEquals(JsonEvent.EndArray, events[2].first)
+        assertEquals(3, events.size)
+    }
 }
