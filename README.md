@@ -107,8 +107,9 @@ parser.skipJsonElement()
 
 `currentJsonElement()` decodes the token reported by the last `next()` call and
 throws `IllegalStateException` when there is none, so `JsonNull` from it always
-means the JSON literal `null`. Tokens that are not valid JSON raise
-`JsonParseException` with the token's offset.
+means the JSON literal `null`. `nextJsonElement()` returns `null` when the next
+event is not a value, `expect<T>()` returns the next event and fails if it has
+another type, and `skipJsonElement()` skips the value at the current position.
 
 ### Selective field extraction
 
@@ -147,10 +148,11 @@ while (true) {
 | `Value` | A complete value (string, number, boolean, null, or field name) |
 | `InProgress` | Buffer exhausted -- push more data (`JsonParser` only) |
 
-Field names and values both emit `Value`. Call `currentValue()` to get the raw
-JSON text of the token (strings include their surrounding quotes and escape
-sequences). The token stays readable until the next `next()` call, including
-across `push()` calls.
+Field names and values both emit `Value`, and nothing in the stream marks
+which is which; a value always follows its field name, so track the container
+state. Call `currentValue()` to get the raw JSON text of the token (strings
+include their surrounding quotes and escape sequences). The token stays
+readable until the next `next()` call, including across `push()` calls.
 
 ## Platforms
 
@@ -164,6 +166,8 @@ across `push()` calls.
 - `kotlinx-coroutines-core`
 - `io.ktor:ktor-io`
 
+Versions are pinned in `build.gradle.kts`.
+
 ## Building
 
 ```sh
@@ -174,6 +178,13 @@ across `push()` calls.
 conformance cases. The `fetchJsonTestSuite` task downloads them into
 `build/jsonTestSuite`; a checkout in `JSONTestSuite/` next to the build is used
 instead when it exists.
+
+## Publishing
+
+The version lives in `gradle.properties` as `projectVersion`. After
+`./gradlew publishToMavenLocal`, `src/jvmTest/kotlin/publish.kt -v<version>`
+collects the artefacts into `publish.zip`; the `-javadoc.jar` it ships is an
+empty stub, so no documentation generator is configured.
 
 ## License
 

@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "org.cikit"
-version = "0.0.3"
+version = providers.gradleProperty("projectVersion").get()
 
 repositories {
     mavenCentral()
@@ -21,7 +21,7 @@ val jsonTestSuiteCommit = "1ef36fa01286573e846ac449e8683f8833c5b26a"
 
 val jsonTestSuiteDir = layout.buildDirectory.dir("jsonTestSuite/test_parsing")
 
-val fetchJsonTestSuite by tasks.registering {
+val fetchJsonTestSuite = tasks.register("fetchJsonTestSuite") {
     group = "verification"
     description = "Downloads the JSONTestSuite parsing cases into " +
         "build/jsonTestSuite"
@@ -71,7 +71,7 @@ kotlin {
                 dependsOn(fetchJsonTestSuite)
                 systemProperty(
                     "jsonTestSuite.dir",
-                    jsonTestSuiteDir.get().absolutePath,
+                    jsonTestSuiteDir.get().asFile.absolutePath,
                 )
             }
         }
@@ -143,8 +143,10 @@ publishing {
                     }
                 }
                 scm {
-                    connection = "scm:git:https://github.com/b8b/json-stream.git"
-                    developerConnection = "scm:git:ssh://github.com/b8b/json-stream.git"
+                    connection =
+                        "scm:git:https://github.com/b8b/json-stream.git"
+                    developerConnection =
+                        "scm:git:ssh://github.com/b8b/json-stream.git"
                     url = "https://github.com/b8b/json-stream.git"
                 }
             }
