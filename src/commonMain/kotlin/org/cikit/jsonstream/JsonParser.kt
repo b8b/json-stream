@@ -113,7 +113,7 @@ class JsonParser {
 
     private fun next0(): JsonEvent {
         if (!skipWhitespace()) {
-            return JsonEvent.InProgress
+            return endOfInput()
         }
         return when (buffer[bufScanPos++]) {
             '{'.code.toByte() -> {
@@ -140,8 +140,7 @@ class JsonParser {
 
     private fun nextAfterStartObject(): JsonEvent {
         if (!skipWhitespace()) {
-            require(!finished)
-            return JsonEvent.InProgress
+            return endOfInput()
         }
         return when (buffer[bufScanPos++]) {
             '}'.code.toByte() -> {
@@ -161,8 +160,7 @@ class JsonParser {
 
     private fun nextAfterFieldName(): JsonEvent {
         if (!skipWhitespace()) {
-            require(!finished)
-            return JsonEvent.InProgress
+            return endOfInput()
         }
         return when (buffer[bufScanPos++]) {
             ':'.code.toByte() -> {
@@ -181,8 +179,7 @@ class JsonParser {
 
     private fun nextAfterFieldValue(): JsonEvent {
         if (!skipWhitespace()) {
-            require(!finished)
-            return JsonEvent.InProgress
+            return endOfInput()
         }
         return when (buffer[bufScanPos++]) {
             '}'.code.toByte() -> {
@@ -207,8 +204,7 @@ class JsonParser {
 
     private fun nextAfterStartArray(): JsonEvent {
         if (!skipWhitespace()) {
-            require(!finished)
-            return JsonEvent.InProgress
+            return endOfInput()
         }
         return when (buffer[bufScanPos++]) {
             ']'.code.toByte() -> {
@@ -228,8 +224,7 @@ class JsonParser {
 
     private fun nextAfterArrayValue(): JsonEvent {
         if (!skipWhitespace()) {
-            require(!finished)
-            return JsonEvent.InProgress
+            return endOfInput()
         }
         return when (buffer[bufScanPos++]) {
             ']'.code.toByte() -> {
@@ -257,8 +252,7 @@ class JsonParser {
                     val bytesAvail = bufLen - bufScanPos
                     if (bytesAvail == 0) {
                         pushState(State.ESCAPE_1)
-                        require(!finished)
-                        return JsonEvent.InProgress
+                        return endOfInput()
                     }
                     if (buffer[bufScanPos++] == 'u'.code.toByte()) {
                         if (bytesAvail >= 5) {
@@ -267,8 +261,7 @@ class JsonParser {
                             continue
                         }
                         pushState(State.ESCAPE_4)
-                        require(!finished)
-                        return JsonEvent.InProgress
+                        return endOfInput()
                     }
                 }
                 '"'.code.toByte() -> {
@@ -280,15 +273,13 @@ class JsonParser {
                 }
             }
         }
-        require(!finished) { "Unexpected end of stream" }
-        return JsonEvent.InProgress
+        return endOfInput()
     }
 
     private fun nextEscapeRequireOne() : JsonEvent {
         val bytesAvail = bufLen - bufScanPos
         if (bytesAvail == 0) {
-            require(!finished)
-            return JsonEvent.InProgress
+            return endOfInput()
         }
         if (buffer[bufScanPos++] == 'u'.code.toByte()) {
             if (bytesAvail >= 5) {
@@ -298,8 +289,7 @@ class JsonParser {
                 return nextStr()
             }
             setState(State.ESCAPE_4)
-            require(!finished)
-            return JsonEvent.InProgress
+            return endOfInput()
         }
         popState()
         return nextStr()
@@ -308,8 +298,7 @@ class JsonParser {
     private fun nextEscapeRequireFour(): JsonEvent {
         val bytesAvail = bufLen - bufScanPos
         if (bytesAvail < 4) {
-            require(!finished)
-            return JsonEvent.InProgress
+            return endOfInput()
         }
         requireHexDigits(bufScanPos)
         bufScanPos += 4
@@ -446,6 +435,16 @@ class JsonParser {
         }
         val digits = "0123456789abcdef"
         return "0x${digits[b shr 4]}${digits[b and 0xf]}"
+    }
+
+    private fun endOfInput(): JsonEvent {
+        if (finished) {
+            throw JsonParseException(
+                offset = bufBase + bufLen,
+                message = "Unexpected end of JSON input",
+            )
+        }
+        return JsonEvent.InProgress
     }
 
     private fun parseError(message: String, at: Int): Nothing {

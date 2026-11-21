@@ -349,6 +349,45 @@ class TestParser {
     }
 
     @Test
+    fun testTruncatedInputRaisesParseException() {
+        val docs = listOf(
+            "",
+            "   ",
+            "{",
+            "{\"a\"",
+            "{\"a\":",
+            "{\"a\":1",
+            "[",
+            "[1",
+            "[1,",
+            "{\"a\":[1,",
+            "\"abc",
+            "\"\\",
+            "\"\\u",
+            "\"\\u00",
+            "[\"\\u0041\\",
+        )
+        for (doc in docs) {
+            val expected = "Unexpected end of JSON input at byte offset " +
+                doc.encodeToByteArray().size
+            val fromPush = assertFailsWith<JsonParseException>(doc) {
+                parseAll(doc)
+            }
+            assertEquals(expected, fromPush.message, doc)
+            for (chunkSize in listOf(1, 3, 1000)) {
+                val ex = assertFailsWith<JsonParseException>(
+                    "doc=$doc chunkSize=$chunkSize",
+                ) { parseAllChunked(doc, chunkSize) }
+                assertEquals(
+                    expected,
+                    ex.message,
+                    "doc=$doc chunkSize=$chunkSize",
+                )
+            }
+        }
+    }
+
+    @Test
     fun testParseErrorOffsetIndependentOfChunking() {
         val padding = "x".repeat(2000)
         val doc = "{\"a\":\"$padding\",\"b\":1 2}"
