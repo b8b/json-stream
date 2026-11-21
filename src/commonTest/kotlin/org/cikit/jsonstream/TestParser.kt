@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
+import kotlin.test.assertFailsWith
 
 class TestParser {
 
@@ -246,6 +247,7 @@ class TestParser {
         "\"a\\u00e9\\u4e16b\"",
         "{\"k\":\"\\u0041\",\"n\":[true,null,1]}",
         "[1,\"x\\u0041y\",{\"a\":[]}]",
+        "\"\\uABCD\\uabcd\\u0123\"",
     )
 
     @Test
@@ -294,6 +296,32 @@ class TestParser {
         assertEquals(JsonEvent.EndObject, p.next())
         p.finish()
         assertEquals(null, p.next())
+    }
+
+    @Test
+    fun testInvalidUnicodeEscapeDigit() {
+        val ex = assertFailsWith<JsonParseException> {
+            parseAll("{\"a\":\"\\u00g\"}")
+        }
+        assertEquals(10L, ex.offset)
+    }
+
+    @Test
+    fun testUnicodeEscapeCannotSwallowClosingQuote() {
+        val ex = assertFailsWith<JsonParseException> {
+            parseAll("{\"a\":\"\\u00\"}")
+        }
+        assertEquals(10L, ex.offset)
+    }
+
+    @Test
+    fun testInvalidUnicodeEscapeDigitAcrossPushes() {
+        for (chunkSize in 1..12) {
+            val ex = assertFailsWith<JsonParseException>("chunkSize=$chunkSize") {
+                parseAllChunked("{\"a\":\"\\u00g\"}", chunkSize)
+            }
+            assertEquals(10L, ex.offset, "chunkSize=$chunkSize")
+        }
     }
 
     @Test

@@ -245,6 +245,7 @@ class JsonParser {
                     }
                     if (buffer[bufScanPos++] == 'u'.code.toByte()) {
                         if (bytesAvail >= 5) {
+                            requireHexDigits(bufScanPos)
                             bufScanPos += 4
                             continue
                         }
@@ -274,6 +275,7 @@ class JsonParser {
         }
         if (buffer[bufScanPos++] == 'u'.code.toByte()) {
             if (bytesAvail >= 5) {
+                requireHexDigits(bufScanPos)
                 bufScanPos += 4
                 popState()
                 return nextStr()
@@ -292,6 +294,7 @@ class JsonParser {
             require(!finished)
             return JsonEvent.InProgress
         }
+        requireHexDigits(bufScanPos)
         bufScanPos += 4
         popState()
         return nextStr()
@@ -402,9 +405,24 @@ class JsonParser {
         return false
     }
 
-    private fun parseError(message: String): Nothing {
+    private fun requireHexDigits(start: Int) {
+        for (i in start until start + 4) {
+            if (!isHexDigit(buffer[i])) {
+                parseError("Invalid hex digit in unicode escape", i)
+            }
+        }
+    }
+
+    private fun isHexDigit(b: Byte): Boolean {
+        val c = b.toInt()
+        return c in '0'.code..'9'.code ||
+            c in 'a'.code..'f'.code ||
+            c in 'A'.code..'F'.code
+    }
+
+    private fun parseError(message: String, at: Int = bufScanPos): Nothing {
         throw JsonParseException(
-            offset = totalPos + (bufScanPos - bufPos),
+            offset = totalPos + (at - bufPos),
             message = message,
         )
     }
