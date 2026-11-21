@@ -68,6 +68,10 @@ offset, so `null` always means the document was complete.
 Malformed input raises `JsonParseException`; its `offset` is the index of the
 first byte that could not be accepted.
 
+The parser is strict: numbers, `true`/`false`/`null` and string escapes must
+follow RFC 8259, and raw control characters inside a string are rejected. A
+leading UTF-8 BOM is skipped; UTF-16 input is not supported.
+
 ### Suspending parser
 
 `SuspendingJsonParser` wraps `JsonParser` and reads from a Ktor

@@ -15,6 +15,7 @@ class JsonParser {
     private var currentStart = -1
     private var currentEnd = -1
     private var singleOffset = -1L
+    private var bomPending = true
 
     private enum class State {
         INITIAL,
@@ -62,6 +63,7 @@ class JsonParser {
         }
         data.copyInto(buffer, bufLen, offset, offset + length)
         bufLen += length
+        stripBom()
     }
 
     fun finish() {
@@ -114,6 +116,9 @@ class JsonParser {
         get() = if (currentStart < 0) null else bufBase + currentStart
 
     private fun next0(fieldName: Boolean = false): JsonEvent {
+        if (bomPending && bufLen < BOM_SIZE) {
+            return endOfInput()
+        }
         if (!skipWhitespace()) {
             return endOfInput()
         }
@@ -259,22 +264,33 @@ class JsonParser {
 
     private fun nextStr(): JsonEvent {
         while (bufScanPos < bufLen) {
-            when (buffer[bufScanPos++]) {
+            val at = bufScanPos
+            val b = buffer[bufScanPos++]
+            when (b) {
                 '\\'.code.toByte() -> {
                     val bytesAvail = bufLen - bufScanPos
                     if (bytesAvail == 0) {
                         pushState(State.ESCAPE_1)
                         return endOfInput()
                     }
-                    if (buffer[bufScanPos++] == 'u'.code.toByte()) {
+                    val escape = buffer[bufScanPos]
+                    if (escape == 'u'.code.toByte()) {
                         if (bytesAvail >= 5) {
-                            requireHexDigits(bufScanPos)
-                            bufScanPos += 4
+                            requireHexDigits(bufScanPos + 1)
+                            bufScanPos += 5
                             continue
                         }
+                        bufScanPos++
                         pushState(State.ESCAPE_4)
                         return endOfInput()
                     }
+                    if (!isSimpleEscape(escape)) {
+                        parseError(
+                            "Invalid escape ${describeByte(bufScanPos)}",
+                            bufScanPos,
+                        )
+                    }
+                    bufScanPos++
                 }
                 '"'.code.toByte() -> {
                     currentStart = bufPos
@@ -282,6 +298,16 @@ class JsonParser {
                     advanceBufPos()
                     popState()
                     return JsonEvent.Value
+                }
+
+                else -> {
+                    if ((b.toInt() and 0xff) < 0x20) {
+                        parseError(
+                            "Control character ${describeByte(at)} " +
+                                "must be escaped",
+                            at,
+                        )
+                    }
                 }
             }
         }
@@ -293,16 +319,25 @@ class JsonParser {
         if (bytesAvail == 0) {
             return endOfInput()
         }
-        if (buffer[bufScanPos++] == 'u'.code.toByte()) {
+        val escape = buffer[bufScanPos]
+        if (escape == 'u'.code.toByte()) {
             if (bytesAvail >= 5) {
-                requireHexDigits(bufScanPos)
-                bufScanPos += 4
+                requireHexDigits(bufScanPos + 1)
+                bufScanPos += 5
                 popState()
                 return nextStr()
             }
+            bufScanPos++
             setState(State.ESCAPE_4)
             return endOfInput()
         }
+        if (!isSimpleEscape(escape)) {
+            parseError(
+                "Invalid escape ${describeByte(bufScanPos)}",
+                bufScanPos,
+            )
+        }
+        bufScanPos++
         popState()
         return nextStr()
     }
@@ -325,44 +360,29 @@ class JsonParser {
                 '\t'.code.toByte(),
                 '\r'.code.toByte(),
                 '\n'.code.toByte() -> {
-                    currentStart = bufPos
-                    currentEnd = bufScanPos - 1
-                    advanceBufPos()
                     popState()
-                    return JsonEvent.Value
+                    return plainValue(bufScanPos - 1)
                 }
                 '}'.code.toByte() -> {
-                    currentStart = bufPos
-                    currentEnd = bufScanPos - 1
                     singleOffset = bufBase + bufScanPos - 1
-                    advanceBufPos()
                     setState(State.SINGLE_END_OBJECT)
-                    return JsonEvent.Value
+                    return plainValue(bufScanPos - 1)
                 }
                 ']'.code.toByte() -> {
-                    currentStart = bufPos
-                    currentEnd = bufScanPos - 1
                     singleOffset = bufBase + bufScanPos - 1
-                    advanceBufPos()
                     setState(State.SINGLE_END_ARRAY)
-                    return JsonEvent.Value
+                    return plainValue(bufScanPos - 1)
                 }
                 ','.code.toByte() -> {
-                    currentStart = bufPos
-                    currentEnd = bufScanPos - 1
                     singleOffset = bufBase + bufScanPos - 1
-                    advanceBufPos()
                     setState(State.SINGLE_COMMA)
-                    return JsonEvent.Value
+                    return plainValue(bufScanPos - 1)
                 }
             }
         }
         if (finished) {
-            currentStart = bufPos
-            currentEnd = bufScanPos
-            advanceBufPos()
             popState()
-            return JsonEvent.Value
+            return plainValue(bufScanPos)
         }
         return JsonEvent.InProgress
     }
@@ -448,6 +468,135 @@ class JsonParser {
         return "0x${digits[b shr 4]}${digits[b and 0xf]}"
     }
 
+    private fun stripBom() {
+        if (!bomPending || bufLen == 0) {
+            return
+        }
+        if (buffer[0] != 0xEF.toByte()) {
+            bomPending = false
+            return
+        }
+        if (bufLen < BOM_SIZE) {
+            return
+        }
+        bomPending = false
+        if (buffer[1] == 0xBB.toByte() && buffer[2] == 0xBF.toByte()) {
+            bufPos = BOM_SIZE
+            bufScanPos = BOM_SIZE
+        }
+    }
+
+    private fun plainValue(end: Int): JsonEvent {
+        currentStart = bufPos
+        currentEnd = end
+        validatePlain(currentStart, currentEnd)
+        advanceBufPos()
+        return JsonEvent.Value
+    }
+
+    private fun validatePlain(start: Int, end: Int) {
+        val first = buffer[start].toInt()
+        val bad = when (first) {
+            't'.code -> matchLiteral(start, end, "true")
+            'f'.code -> matchLiteral(start, end, "false")
+            'n'.code -> matchLiteral(start, end, "null")
+            else -> matchNumber(start, end)
+        }
+        if (bad < 0) {
+            return
+        }
+        if (bad >= bufLen) {
+            throw JsonParseException(
+                offset = bufBase + bufLen,
+                message = "Unexpected end of JSON input",
+            )
+        }
+        val text = tokenText(start, end)
+        val kind = if (first == '-'.code || first in '0'.code..'9'.code) {
+            "number"
+        } else {
+            "literal"
+        }
+        parseError("Invalid $kind '$text'", bad)
+    }
+
+    private fun matchLiteral(start: Int, end: Int, literal: String): Int {
+        var i = start
+        var j = 0
+        while (j < literal.length && i < end) {
+            if (buffer[i] != literal[j].code.toByte()) {
+                return i
+            }
+            i++
+            j++
+        }
+        if (j < literal.length) {
+            return i
+        }
+        return if (i < end) i else -1
+    }
+
+    private fun matchNumber(start: Int, end: Int): Int {
+        var i = start
+        if (buffer[i] == '-'.code.toByte()) {
+            i++
+            if (i >= end) {
+                return i
+            }
+        }
+        when (buffer[i].toInt()) {
+            '0'.code -> i++
+            in '1'.code..'9'.code -> {
+                i++
+                while (i < end && buffer[i].toInt() in '0'.code..'9'.code) {
+                    i++
+                }
+            }
+
+            else -> return i
+        }
+        if (i < end && buffer[i] == '.'.code.toByte()) {
+            i++
+            if (i >= end || buffer[i].toInt() !in '0'.code..'9'.code) {
+                return i
+            }
+            while (i < end && buffer[i].toInt() in '0'.code..'9'.code) {
+                i++
+            }
+        }
+        if (i < end && (buffer[i] == 'e'.code.toByte() ||
+                buffer[i] == 'E'.code.toByte())) {
+            i++
+            if (i < end && (buffer[i] == '+'.code.toByte() ||
+                    buffer[i] == '-'.code.toByte())) {
+                i++
+            }
+            if (i >= end || buffer[i].toInt() !in '0'.code..'9'.code) {
+                return i
+            }
+            while (i < end && buffer[i].toInt() in '0'.code..'9'.code) {
+                i++
+            }
+        }
+        return if (i < end) i else -1
+    }
+
+    private fun tokenText(start: Int, end: Int): String {
+        val text = buffer.decodeToString(start, end)
+        return if (text.length <= TOKEN_TEXT_LENGTH) {
+            text
+        } else {
+            text.take(TOKEN_TEXT_LENGTH) + "..."
+        }
+    }
+
+    private fun isSimpleEscape(b: Byte): Boolean {
+        val c = b.toInt()
+        return c == '"'.code || c == '\\'.code || c == '/'.code ||
+            c == 'b'.code || c == 'f'.code || c == 'n'.code ||
+            c == 'r'.code || c == 't'.code
+    }
+
     private fun isValueStart(b: Byte): Boolean {
         val c = b.toInt()
         return c == '{'.code || c == '['.code || c == '"'.code ||
@@ -497,5 +646,10 @@ class JsonParser {
 
     private fun popState() {
         stSize--
+    }
+
+    private companion object {
+        private const val BOM_SIZE = 3
+        private const val TOKEN_TEXT_LENGTH = 32
     }
 }

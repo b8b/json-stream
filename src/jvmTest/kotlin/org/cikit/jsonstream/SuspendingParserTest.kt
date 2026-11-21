@@ -33,19 +33,12 @@ class SuspendingParserTest {
     }
 
     @Test
-    fun testInvalidStringEscapeRaisesParseExceptionWithOffset() = runBlocking {
+    fun testInvalidEscapeRaisesParseExceptionWithOffset() = runBlocking {
         val p = parser("""["a\qb"]""")
         assertEquals(JsonEvent.StartArray, p.next())
-        assertEquals(JsonEvent.Value, p.next())
-        assertEquals(""""a\qb"""", p.currentValue())
-        val ex = assertFailsWith<JsonParseException> {
-            p.currentJsonElement()
-        }
-        assertEquals(1L, ex.offset)
-        assertEquals(
-            """not a JSON value: "a\qb" at byte offset 1""",
-            ex.message,
-        )
+        val ex = assertFailsWith<JsonParseException> { p.next() }
+        assertEquals(4L, ex.offset)
+        assertEquals("Invalid escape 'q' at byte offset 4", ex.message)
     }
 
     @Test

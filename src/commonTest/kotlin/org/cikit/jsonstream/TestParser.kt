@@ -361,6 +361,99 @@ class TestParser {
     }
 
     @Test
+    fun testScalarValidation() {
+        val valid = listOf(
+            "0", "-0", "1", "-1", "0.5", "-1.5e-3", "1e5", "1E+5", "1e-5",
+            "1.0e+00", "0e0", "123456789012345678901234567890",
+            "true", "false", "null",
+            "\"a\\\"b\"", "\"\\/\"", "\"\\b\\f\\n\\r\\t\"", "\"\\u0041\"",
+        )
+        for (doc in valid) {
+            val events = parseAll(doc)
+            assertEquals(listOf(JsonEvent.Value), events.map { it.first }, doc)
+            assertEquals(doc, events.single().second, doc)
+        }
+        val invalid = listOf(
+            "01" to "Invalid number '01' at byte offset 1",
+            "-01" to "Invalid number '-01' at byte offset 2",
+            "0x1" to "Invalid number '0x1' at byte offset 1",
+            "1.2.3" to "Invalid number '1.2.3' at byte offset 3",
+            "1-2" to "Invalid number '1-2' at byte offset 1",
+            "1..2" to "Invalid number '1..2' at byte offset 2",
+            "1e--2" to "Invalid number '1e--2' at byte offset 3",
+            "truex" to "Invalid literal 'truex' at byte offset 4",
+            "1." to "Unexpected end of JSON input at byte offset 2",
+            "-" to "Unexpected end of JSON input at byte offset 1",
+            "1e+" to "Unexpected end of JSON input at byte offset 3",
+            "tru" to "Unexpected end of JSON input at byte offset 3",
+            "\"a\tb\"" to
+                "Control character 0x09 must be escaped at byte offset 2",
+            "\"a\nb\"" to
+                "Control character 0x0a must be escaped at byte offset 2",
+            "\"\\q\"" to "Invalid escape 'q' at byte offset 2",
+            "\"\\x41\"" to "Invalid escape 'x' at byte offset 2",
+        )
+        for ((doc, message) in invalid) {
+            val ex = assertFailsWith<JsonParseException>(doc) { parseAll(doc) }
+            assertEquals(message, ex.message, doc)
+        }
+    }
+
+    @Test
+    fun testScalarValidationAcrossPushes() {
+        val valid = listOf("0", "-1.5e-3", "1E+5", "true", "null", "\"\\u0041\\n\"")
+        for (doc in valid) {
+            val expected = parseAll(doc)
+            for (chunkSize in 1..doc.encodeToByteArray().size) {
+                assertEquals(
+                    expected,
+                    parseAllChunked(doc, chunkSize),
+                    "doc=$doc chunkSize=$chunkSize",
+                )
+            }
+        }
+        val invalid = listOf("01", "1.2.3", "\"\\q\"", "\"a\tb\"")
+        for (doc in invalid) {
+            val expected = assertFailsWith<JsonParseException>(doc) {
+                parseAll(doc)
+            }
+            for (chunkSize in 1..doc.encodeToByteArray().size) {
+                val ex = assertFailsWith<JsonParseException>(
+                    "doc=$doc chunkSize=$chunkSize",
+                ) { parseAllChunked(doc, chunkSize) }
+                assertEquals(
+                    expected.message,
+                    ex.message,
+                    "doc=$doc chunkSize=$chunkSize",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testUtf8BomIsSkipped() {
+        val bom = "\uFEFF"
+        assertEquals(
+            listOf(JsonEvent.StartObject, JsonEvent.EndObject),
+            parseAll(bom + "{}").map { it.first },
+        )
+        assertEquals(
+            listOf(JsonEvent.StartArray, JsonEvent.Value, JsonEvent.EndArray),
+            parseAll(bom + "[1]").map { it.first },
+        )
+        for (chunkSize in 1..4) {
+            val ex = assertFailsWith<JsonParseException>("chunkSize=$chunkSize") {
+                parseAllChunked(bom + "1 2", chunkSize)
+            }
+            assertEquals(
+                "Unexpected '2' after end of document at byte offset 5",
+                ex.message,
+                "chunkSize=$chunkSize",
+            )
+        }
+    }
+
+    @Test
     fun testStructuralBytesAreNotValues() {
         val cases = listOf(
             "{\"a\":}" to "Unexpected '}', expected a value at byte offset 5",
