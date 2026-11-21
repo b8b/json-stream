@@ -349,6 +349,18 @@ class TestParser {
     }
 
     @Test
+    fun testFinishIsIdempotent() {
+        val p = JsonParser()
+        p.push("[1]".encodeToByteArray())
+        p.finish()
+        p.finish()
+        assertEquals(JsonEvent.StartArray, p.next())
+        assertEquals(JsonEvent.Value, p.next())
+        assertEquals(JsonEvent.EndArray, p.next())
+        assertEquals(null, p.next())
+    }
+
+    @Test
     fun testStructuralBytesAreNotValues() {
         val cases = listOf(
             "{\"a\":}" to "Unexpected '}', expected a value at byte offset 5",

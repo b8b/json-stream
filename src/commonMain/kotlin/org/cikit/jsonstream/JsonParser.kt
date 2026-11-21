@@ -65,7 +65,6 @@ class JsonParser {
     }
 
     fun finish() {
-        require(!finished)
         finished = true
     }
 

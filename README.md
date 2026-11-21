@@ -53,6 +53,21 @@ while (true) {
 }
 ```
 
+### Termination and errors
+
+`next()` returns `null` only when the whole document has been parsed
+successfully, and `JsonEvent.InProgress` when the current chunk has been
+consumed and more input is required -- push the next chunk and call `next()`
+again.
+
+`finish()` marks the end of the input and may be called more than once;
+repeated calls are a no-op. Calling `next()` after `finish()` while the parser
+still waits for input raises `JsonParseException` with the end-of-input
+offset, so `null` always means the document was complete.
+
+Malformed input raises `JsonParseException`; its `offset` is the index of the
+first byte that could not be accepted.
+
 ### Suspending parser
 
 `SuspendingJsonParser` wraps `JsonParser` and reads from a Ktor
