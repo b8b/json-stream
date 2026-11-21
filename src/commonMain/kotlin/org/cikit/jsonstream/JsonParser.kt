@@ -6,12 +6,15 @@ class JsonParser {
     private var bufLen = 0
     private var bufPos = 0
     private var bufScanPos = 0
-    var totalPos = 0L
-        private set
+    private var bufBase = 0L
+
+    val totalPos: Long
+        get() = bufBase + bufScanPos
     private var finished = false
 
     private var currentStart = -1
     private var currentEnd = -1
+    private var singleOffset = -1L
 
     private enum class State {
         INITIAL,
@@ -53,7 +56,7 @@ class JsonParser {
             bufLen = keepLen
             if (keepFrom > 0) {
                 bufScanPos -= keepFrom
-                totalPos += keepFrom
+                bufBase += keepFrom
                 bufPos = 0
             }
         }
@@ -76,7 +79,10 @@ class JsonParser {
                 }
                 return null
             }
-            parseError("trailing garbage")
+            parseError(
+                "Unexpected ${describeByte(bufScanPos)} after end of document",
+                bufScanPos,
+            )
         }
         return when (getState()) {
             State.INITIAL -> next0()
@@ -166,7 +172,10 @@ class JsonParser {
                 next0()
             }
 
-            else -> parseError("Expected ':' in object")
+            else -> parseError(
+                "Unexpected ${describeByte(bufScanPos - 1)}, expected ':'",
+                bufScanPos - 1,
+            )
         }
     }
 
@@ -188,7 +197,11 @@ class JsonParser {
                 next0()
             }
 
-            else -> parseError("Expected ',' or '}' in object")
+            else -> parseError(
+                "Unexpected ${describeByte(bufScanPos - 1)}, " +
+                    "expected ',' or '}'",
+                bufScanPos - 1,
+            )
         }
     }
 
@@ -229,7 +242,11 @@ class JsonParser {
                 next0()
             }
 
-            else -> parseError("Expected ',' or ']' in array")
+            else -> parseError(
+                "Unexpected ${describeByte(bufScanPos - 1)}, " +
+                    "expected ',' or ']'",
+                bufScanPos - 1,
+            )
         }
     }
 
@@ -316,6 +333,7 @@ class JsonParser {
                 '}'.code.toByte() -> {
                     currentStart = bufPos
                     currentEnd = bufScanPos - 1
+                    singleOffset = bufBase + bufScanPos - 1
                     advanceBufPos()
                     setState(State.SINGLE_END_OBJECT)
                     return JsonEvent.Value
@@ -323,6 +341,7 @@ class JsonParser {
                 ']'.code.toByte() -> {
                     currentStart = bufPos
                     currentEnd = bufScanPos - 1
+                    singleOffset = bufBase + bufScanPos - 1
                     advanceBufPos()
                     setState(State.SINGLE_END_ARRAY)
                     return JsonEvent.Value
@@ -330,6 +349,7 @@ class JsonParser {
                 ','.code.toByte() -> {
                     currentStart = bufPos
                     currentEnd = bufScanPos - 1
+                    singleOffset = bufBase + bufScanPos - 1
                     advanceBufPos()
                     setState(State.SINGLE_COMMA)
                     return JsonEvent.Value
@@ -351,7 +371,7 @@ class JsonParser {
         when (getState()) {
             State.AFTER_FIELD_VALUE -> popState()
 
-            else -> parseError("Unexpected token '}'")
+            else -> parseErrorAt("Unexpected '}'", singleOffset)
         }
         return JsonEvent.EndObject
     }
@@ -361,7 +381,7 @@ class JsonParser {
         when (getState()) {
             State.AFTER_ARRAY_VALUE -> popState()
 
-            else -> parseError("Unexpected token ']'")
+            else -> parseErrorAt("Unexpected ']'", singleOffset)
         }
         return JsonEvent.EndArray
     }
@@ -379,12 +399,11 @@ class JsonParser {
                 next0()
             }
 
-            else -> parseError("Unexpected token ','")
+            else -> parseErrorAt("Unexpected ','", singleOffset)
         }
     }
 
     private fun advanceBufPos() {
-        totalPos += bufScanPos - bufPos
         bufPos = bufScanPos
     }
 
@@ -408,7 +427,7 @@ class JsonParser {
     private fun requireHexDigits(start: Int) {
         for (i in start until start + 4) {
             if (!isHexDigit(buffer[i])) {
-                parseError("Invalid hex digit in unicode escape", i)
+                parseError("Not a hex digit ${describeByte(i)}", i)
             }
         }
     }
@@ -420,11 +439,21 @@ class JsonParser {
             c in 'A'.code..'F'.code
     }
 
-    private fun parseError(message: String, at: Int = bufScanPos): Nothing {
-        throw JsonParseException(
-            offset = totalPos + (at - bufPos),
-            message = message,
-        )
+    private fun describeByte(at: Int): String {
+        val b = buffer[at].toInt() and 0xff
+        if (b in 0x20..0x7e) {
+            return "'${b.toChar()}'"
+        }
+        val digits = "0123456789abcdef"
+        return "0x${digits[b shr 4]}${digits[b and 0xf]}"
+    }
+
+    private fun parseError(message: String, at: Int): Nothing {
+        parseErrorAt(message, bufBase + at)
+    }
+
+    private fun parseErrorAt(message: String, offset: Long): Nothing {
+        throw JsonParseException(offset = offset, message = message)
     }
 
     private fun getState(): State {

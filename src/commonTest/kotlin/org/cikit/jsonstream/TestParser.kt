@@ -325,6 +325,43 @@ class TestParser {
     }
 
     @Test
+    fun testParseErrorMessagesAndOffsets() {
+        val cases = listOf(
+            "{\"a\" 1}" to "Unexpected '1', expected ':' at byte offset 5",
+            "[1 2]" to "Unexpected '2', expected ',' or ']' at byte offset 3",
+            "[1,2 3]" to "Unexpected '3', expected ',' or ']' at byte offset 5",
+            "{\"a\":1 \"b\":2}" to
+                "Unexpected '\"', expected ',' or '}' at byte offset 7",
+            "1 2" to "Unexpected '2' after end of document at byte offset 2",
+            "true false" to
+                "Unexpected 'f' after end of document at byte offset 5",
+            "[1,2]x" to "Unexpected 'x' after end of document at byte offset 5",
+            "{\"a\":1 \u0001}" to
+                "Unexpected 0x01, expected ',' or '}' at byte offset 7",
+            "[\"\\u00g\"]" to "Not a hex digit 'g' at byte offset 6",
+            "[1}]" to "Unexpected '}' at byte offset 2",
+            "{\"a\":1]" to "Unexpected ']' at byte offset 6",
+        )
+        for ((doc, message) in cases) {
+            val ex = assertFailsWith<JsonParseException>(doc) { parseAll(doc) }
+            assertEquals(message, ex.message, doc)
+        }
+    }
+
+    @Test
+    fun testParseErrorOffsetIndependentOfChunking() {
+        val padding = "x".repeat(2000)
+        val doc = "{\"a\":\"$padding\",\"b\":1 2}"
+        val expected = (doc.indexOf(" 2}") + 1).toLong()
+        for (chunkSize in listOf(1, 7, 512, 4096)) {
+            val ex = assertFailsWith<JsonParseException>("chunkSize=$chunkSize") {
+                parseAllChunked(doc, chunkSize)
+            }
+            assertEquals(expected, ex.offset, "chunkSize=$chunkSize")
+        }
+    }
+
+    @Test
     fun testCurrentValueAfterBogusPush() {
         val p = JsonParser()
         p.push("""{"a":"0123456789"}""".encodeToByteArray())
