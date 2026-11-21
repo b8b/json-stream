@@ -1,0 +1,19 @@
+#!/bin/sh
+set -e
+
+root=$(git rev-parse --show-toplevel)
+version=$(sed -n 's/^projectVersion=//p' "$root/gradle.properties" |
+    head -1 | tr -d '\r')
+
+if [ -z "$version" ]; then
+    echo "pre-commit: projectVersion missing from gradle.properties" >&2
+    exit 1
+fi
+
+tag="v$version"
+if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+    echo "pre-commit: $tag is already tagged, projectVersion is still $version" >&2
+    echo "            bump projectVersion in gradle.properties first" >&2
+    echo "            (or commit with --no-verify)" >&2
+    exit 1
+fi

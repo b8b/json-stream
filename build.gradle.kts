@@ -17,6 +17,21 @@ repositories {
     mavenCentral()
 }
 
+val repoRoot = layout.projectDirectory.asFile
+
+val installGitHooks by tasks.registering {
+    group = "build setup"
+    description = "Points git at the versioned hooks in scripts/git-hooks"
+    doLast {
+        val rc = ProcessBuilder(
+            "git", "config", "core.hooksPath", "scripts/git-hooks"
+        ).directory(repoRoot).inheritIO().start().waitFor()
+        if (rc != 0) {
+            error("git config failed with exit code $rc")
+        }
+    }
+}
+
 val jsonTestSuiteCommit = "1ef36fa01286573e846ac449e8683f8833c5b26a"
 
 val jsonTestSuiteDir = layout.buildDirectory.dir("jsonTestSuite/test_parsing")

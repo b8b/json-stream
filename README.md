@@ -174,6 +174,16 @@ Versions are pinned in `build.gradle.kts`.
 ./gradlew build
 ```
 
+Enable the versioned git hooks once per checkout:
+
+```sh
+./gradlew installGitHooks
+```
+
+The `pre-commit` hook refuses to commit while `projectVersion` in
+`gradle.properties` matches an existing `v<version>` tag, so a version is not
+reused after it has been released.
+
 `jvmTest` runs the [JSONTestSuite](https://github.com/nst/JSONTestSuite)
 conformance cases. The `fetchJsonTestSuite` task downloads them into
 `build/jsonTestSuite`; a checkout in `JSONTestSuite/` next to the build is used
