@@ -111,11 +111,21 @@ class JsonParser {
         return ""
     }
 
-    private fun next0(): JsonEvent {
+    private fun next0(fieldName: Boolean = false): JsonEvent {
         if (!skipWhitespace()) {
             return endOfInput()
         }
-        return when (buffer[bufScanPos++]) {
+        val at = bufScanPos
+        val b = buffer[at]
+        if (if (fieldName) b != '"'.code.toByte() else !isValueStart(b)) {
+            parseError(
+                "Unexpected ${describeByte(at)}, expected " +
+                    (if (fieldName) "a field name" else "a value"),
+                at,
+            )
+        }
+        bufScanPos++
+        return when (b) {
             '{'.code.toByte() -> {
                 setState(State.AFTER_START_OBJECT)
                 advanceBufPos()
@@ -153,7 +163,7 @@ class JsonParser {
                 setState(State.AFTER_FIELD_NAME)
                 pushState(State.INITIAL)
                 bufScanPos--
-                next0()
+                next0(fieldName = true)
             }
         }
     }
@@ -191,7 +201,7 @@ class JsonParser {
                 setState(State.AFTER_FIELD_NAME)
                 pushState(State.INITIAL)
                 advanceBufPos()
-                next0()
+                next0(fieldName = true)
             }
 
             else -> parseError(
@@ -356,34 +366,33 @@ class JsonParser {
     }
 
     private fun nextSingleEndObject(): JsonEvent {
-        popState()
-        when (getState()) {
-            State.AFTER_FIELD_VALUE -> popState()
-
-            else -> parseErrorAt("Unexpected '}'", singleOffset)
+        if (enclosingState() != State.AFTER_FIELD_VALUE) {
+            parseErrorAt("Unexpected '}'", singleOffset)
         }
+        popState()
+        popState()
         return JsonEvent.EndObject
     }
 
     private fun nextSingleEndArray(): JsonEvent {
-        popState()
-        when (getState()) {
-            State.AFTER_ARRAY_VALUE -> popState()
-
-            else -> parseErrorAt("Unexpected ']'", singleOffset)
+        if (enclosingState() != State.AFTER_ARRAY_VALUE) {
+            parseErrorAt("Unexpected ']'", singleOffset)
         }
+        popState()
+        popState()
         return JsonEvent.EndArray
     }
 
     private fun nextSingleComma(): JsonEvent {
-        popState()
-        return when (getState()) {
+        return when (enclosingState()) {
             State.AFTER_FIELD_VALUE -> {
+                popState()
                 setState(State.AFTER_FIELD_NAME)
                 pushState(State.INITIAL)
-                next0()
+                next0(fieldName = true)
             }
             State.AFTER_ARRAY_VALUE -> {
+                popState()
                 pushState(State.INITIAL)
                 next0()
             }
@@ -437,6 +446,13 @@ class JsonParser {
         return "0x${digits[b shr 4]}${digits[b and 0xf]}"
     }
 
+    private fun isValueStart(b: Byte): Boolean {
+        val c = b.toInt()
+        return c == '{'.code || c == '['.code || c == '"'.code ||
+            c == '-'.code || c in '0'.code..'9'.code ||
+            c == 't'.code || c == 'f'.code || c == 'n'.code
+    }
+
     private fun endOfInput(): JsonEvent {
         if (finished) {
             throw JsonParseException(
@@ -457,6 +473,13 @@ class JsonParser {
 
     private fun getState(): State {
         return State.entries[sta[stSize - 1]]
+    }
+
+    private fun enclosingState(): State? {
+        if (stSize < 2) {
+            return null
+        }
+        return State.entries[sta[stSize - 2]]
     }
 
     private fun setState(state: State) {

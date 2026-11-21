@@ -349,6 +349,65 @@ class TestParser {
     }
 
     @Test
+    fun testStructuralBytesAreNotValues() {
+        val cases = listOf(
+            "{\"a\":}" to "Unexpected '}', expected a value at byte offset 5",
+            "{\"a\":,}" to "Unexpected ',', expected a value at byte offset 5",
+            "{\"a\":}}" to "Unexpected '}', expected a value at byte offset 5",
+            "[,1]" to "Unexpected ',', expected a value at byte offset 1",
+            "[,]" to "Unexpected ',', expected a value at byte offset 1",
+            "[1,,2]" to "Unexpected ',', expected a value at byte offset 3",
+            "[1,]" to "Unexpected ']', expected a value at byte offset 3",
+            ":" to "Unexpected ':', expected a value at byte offset 0",
+            "][" to "Unexpected ']', expected a value at byte offset 0",
+            "}" to "Unexpected '}', expected a value at byte offset 0",
+            "{\"a\":[1,]}" to
+                "Unexpected ']', expected a value at byte offset 8",
+            "{\"a\":1,}" to
+                "Unexpected '}', expected a field name at byte offset 7",
+            "{a:1}" to "Unexpected 'a', expected a field name at byte offset 1",
+            "{,}" to "Unexpected ',', expected a field name at byte offset 1",
+        )
+        for ((doc, message) in cases) {
+            val ex = assertFailsWith<JsonParseException>(doc) { parseAll(doc) }
+            assertEquals(message, ex.message, doc)
+        }
+    }
+
+    @Test
+    fun testUnopenedCloseTokensAreParseErrors() {
+        val cases = listOf(
+            "[1}]" to "Unexpected '}' at byte offset 2",
+            "{\"a\":1]" to "Unexpected ']' at byte offset 6",
+            "1]" to "Unexpected ']' at byte offset 1",
+            "1}" to "Unexpected '}' at byte offset 1",
+            "1," to "Unexpected ',' at byte offset 1",
+        )
+        for ((doc, message) in cases) {
+            val ex = assertFailsWith<JsonParseException>(doc) { parseAll(doc) }
+            assertEquals(message, ex.message, doc)
+        }
+    }
+
+    @Test
+    fun testStructuralBytesRejectedAcrossPushes() {
+        val docs = listOf("{\"a\":[1,]}", "[1,,2]", "{a:1}", "{\"a\":}}")
+        for (doc in docs) {
+            val expected = assertFailsWith<JsonParseException>(doc) { parseAll(doc) }
+            for (chunkSize in 1..doc.encodeToByteArray().size) {
+                val ex = assertFailsWith<JsonParseException>(
+                    "doc=$doc chunkSize=$chunkSize",
+                ) { parseAllChunked(doc, chunkSize) }
+                assertEquals(
+                    expected.message,
+                    ex.message,
+                    "doc=$doc chunkSize=$chunkSize",
+                )
+            }
+        }
+    }
+
+    @Test
     fun testTruncatedInputRaisesParseException() {
         val docs = listOf(
             "",
