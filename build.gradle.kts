@@ -1,6 +1,9 @@
 @file:OptIn(ExperimentalWasmDsl::class)
 
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+import java.io.File
+import java.net.URI
+import java.util.zip.ZipInputStream
 
 plugins {
     kotlin("multiplatform")
@@ -14,12 +17,63 @@ repositories {
     mavenCentral()
 }
 
+val jsonTestSuiteCommit = "1ef36fa01286573e846ac449e8683f8833c5b26a"
+
+val jsonTestSuiteDir = layout.buildDirectory.dir("jsonTestSuite/test_parsing")
+
+val fetchJsonTestSuite by tasks.registering {
+    group = "verification"
+    description = "Downloads the JSONTestSuite parsing cases into " +
+        "build/jsonTestSuite"
+    outputs.dir(jsonTestSuiteDir)
+    doLast {
+        val target = jsonTestSuiteDir.get().asFile
+        target.deleteRecursively()
+        val archive = File(target.parentFile, "jsonTestSuite.zip")
+        val url = "https://github.com/nst/JSONTestSuite/archive/" +
+            "$jsonTestSuiteCommit.zip"
+        URI(url).toURL().openStream().use { input ->
+            archive.outputStream().use { output -> input.copyTo(output) }
+        }
+        ZipInputStream(archive.inputStream().buffered()).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                val name = entry.name.substringAfter('/', "")
+                if (entry.isDirectory || !name.startsWith("test_parsing/")) {
+                    continue
+                }
+                val file = File(target, name.removePrefix("test_parsing/"))
+                file.parentFile.mkdirs()
+                file.outputStream().use { output -> zip.copyTo(output) }
+            }
+        }
+        archive.delete()
+    }
+}
+
 kotlin {
     jvmToolchain(11)
 
     jvm {
         testRuns["test"].executionTask.configure {
             useJUnitPlatform()
+            systemProperty(
+                "jsonTestSuite.report",
+                project.layout.buildDirectory
+                    .file("reports/jsonTestSuite.txt")
+                    .get().asFile.absolutePath,
+            )
+            val local = project.layout.projectDirectory
+                .dir("JSONTestSuite/test_parsing").asFile
+            if (local.isDirectory) {
+                systemProperty("jsonTestSuite.dir", local.absolutePath)
+            } else {
+                dependsOn(fetchJsonTestSuite)
+                systemProperty(
+                    "jsonTestSuite.dir",
+                    jsonTestSuiteDir.get().absolutePath,
+                )
+            }
         }
     }
 

@@ -170,6 +170,11 @@ across `push()` calls.
 ./gradlew build
 ```
 
+`jvmTest` runs the [JSONTestSuite](https://github.com/nst/JSONTestSuite)
+conformance cases. The `fetchJsonTestSuite` task downloads them into
+`build/jsonTestSuite`; a checkout in `JSONTestSuite/` next to the build is used
+instead when it exists.
+
 ## License
 
 See [LICENSE](LICENSE) for details.
