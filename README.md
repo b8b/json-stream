@@ -72,7 +72,8 @@ first byte that could not be accepted.
 
 `SuspendingJsonParser` wraps `JsonParser` and reads from a Ktor
 `ByteReadChannel`. It automatically feeds the underlying parser when it needs
-more data:
+more data, and never reports `JsonEvent.InProgress`. The channel stays owned
+by the caller: the parser does not close or cancel it, not even on errors.
 
 ```kotlin
 val parser = SuspendingJsonParser(byteReadChannel)
@@ -99,6 +100,11 @@ To skip over a value without allocating a `JsonElement` tree:
 ```kotlin
 parser.skipJsonElement()
 ```
+
+`currentJsonElement()` decodes the token reported by the last `next()` call and
+throws `IllegalStateException` when there is none, so `JsonNull` from it always
+means the JSON literal `null`. Tokens that are not valid JSON raise
+`JsonParseException` with the token's offset.
 
 ### Selective field extraction
 

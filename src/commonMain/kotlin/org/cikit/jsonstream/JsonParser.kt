@@ -110,6 +110,9 @@ class JsonParser {
         return ""
     }
 
+    val currentValueOffset: Long?
+        get() = if (currentStart < 0) null else bufBase + currentStart
+
     private fun next0(fieldName: Boolean = false): JsonEvent {
         if (!skipWhitespace()) {
             return endOfInput()
