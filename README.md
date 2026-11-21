@@ -124,7 +124,8 @@ while (true) {
 
 Field names and values both emit `Value`. Call `currentValue()` to get the raw
 JSON text of the token (strings include their surrounding quotes and escape
-sequences).
+sequences). The token stays readable until the next `next()` call, including
+across `push()` calls.
 
 ## Platforms
 

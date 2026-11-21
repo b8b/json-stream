@@ -272,4 +272,38 @@ class TestParser {
         assertEquals(JsonEvent.EndArray, events[2].first)
         assertEquals(3, events.size)
     }
+
+    @Test
+    fun testCurrentValueAfterPushWithGrowth() {
+        val p = JsonParser()
+        p.push("{\"a\":\"0123456789\"".encodeToByteArray())
+        assertEquals(JsonEvent.StartObject, p.next())
+        assertEquals(JsonEvent.Value, p.next())
+        assertEquals("\"a\"", p.currentValue())
+
+        val padding = "y".repeat(2000)
+        p.push(", \"b\":\"$padding\"}".encodeToByteArray())
+        assertEquals("\"a\"", p.currentValue())
+
+        assertEquals(JsonEvent.Value, p.next())
+        assertEquals("\"0123456789\"", p.currentValue())
+        assertEquals(JsonEvent.Value, p.next())
+        assertEquals("\"b\"", p.currentValue())
+        assertEquals(JsonEvent.Value, p.next())
+        assertEquals("\"$padding\"", p.currentValue())
+        assertEquals(JsonEvent.EndObject, p.next())
+        p.finish()
+        assertEquals(null, p.next())
+    }
+
+    @Test
+    fun testCurrentValueAfterBogusPush() {
+        val p = JsonParser()
+        p.push("""{"a":"0123456789"}""".encodeToByteArray())
+        assertEquals(JsonEvent.StartObject, p.next())
+        assertEquals(JsonEvent.Value, p.next())
+        assertEquals("\"a\"", p.currentValue())
+        p.push(ByteArray(2000) { 'x'.code.toByte() })
+        assertEquals("\"a\"", p.currentValue())
+    }
 }

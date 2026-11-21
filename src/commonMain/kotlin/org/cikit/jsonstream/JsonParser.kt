@@ -37,38 +37,28 @@ class JsonParser {
     }
 
     fun push(data: ByteArray, offset: Int = 0, length: Int = data.size) {
-        val bufAvail = buffer.size - bufLen
-        if (bufAvail >= length) {
-            data.copyInto(buffer, bufLen, offset, offset + length)
-            bufLen += length
-        } else {
-            val bufAvailMax = bufAvail + bufPos
-            if (bufAvailMax < length) {
-                val newBufLen = bufLen - bufPos + length
+        if (buffer.size - bufLen < length) {
+            val keepFrom = if (currentStart < 0) bufPos else 0
+            val keepLen = bufLen - keepFrom
+            if (buffer.size - keepLen < length) {
                 val newBuffer = ByteArray(
-                    1 shl (Int.SIZE_BITS - newBufLen.countLeadingZeroBits())
+                    1 shl (Int.SIZE_BITS -
+                        (keepLen + length).countLeadingZeroBits())
                 )
-                buffer.copyInto(newBuffer, 0, bufPos, bufLen)
-                data.copyInto(
-                    newBuffer,
-                    bufLen - bufPos,
-                    offset,
-                    offset + length
-                )
+                buffer.copyInto(newBuffer, 0, keepFrom, bufLen)
                 buffer = newBuffer
-                bufLen = newBufLen
-                bufScanPos -= bufPos
-                totalPos += bufPos
-                bufPos = 0
-            } else {
-                buffer.copyInto(buffer, 0, bufPos, bufLen)
-                data.copyInto(buffer, bufLen - bufPos, offset, offset + length)
-                bufLen = bufLen - bufPos + length
-                bufScanPos -= bufPos
-                totalPos += bufPos
+            } else if (keepFrom > 0) {
+                buffer.copyInto(buffer, 0, keepFrom, bufLen)
+            }
+            bufLen = keepLen
+            if (keepFrom > 0) {
+                bufScanPos -= keepFrom
+                totalPos += keepFrom
                 bufPos = 0
             }
         }
+        data.copyInto(buffer, bufLen, offset, offset + length)
+        bufLen += length
     }
 
     fun finish() {
